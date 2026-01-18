@@ -13,6 +13,7 @@ import { useAgent } from '@/contexts/AgentContext';
 interface DashboardPageProps {
   user: {
     name: string;
+    picture?: string;
     goals: Goal[];
   };
   emails: Email[];
@@ -73,6 +74,7 @@ export function DashboardPage(props: DashboardPageProps) {
     <div className="min-h-screen bg-background text-foreground selection:bg-purple-500/30">
       <AgentStatusBar
         userName={user.name}
+        userPicture={user.picture}
         focusMode={focusMode}
         isConnected={isConnected}
         onToggleFocusMode={onToggleFocusMode}

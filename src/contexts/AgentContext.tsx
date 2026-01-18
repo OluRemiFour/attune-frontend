@@ -74,7 +74,7 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
       if (!user) return;
       try {
         const goals = await goalService.getGoals(user.id);
-        setUser(prev => ({ ...prev, goals }));
+        setUser(prev => prev ? ({ ...prev, goals }) : prev);
         
         if (isConnected) {
           const fetchedEmails = await emailService.fetchEmails(user.id);
@@ -85,51 +85,71 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
       }
     };
     loadData();
-  }, [isConnected, user.id]);
+  }, [isConnected, user?.id]);
 
   // Connect Gmail
   const connectGmail = useCallback(async () => {
     setIsProcessing(true);
     try {
       const { url } = await authService.connectGmail();
-      // In a real app, we'd redirect or open a popup. 
-      // For MVP, we'll simulate the successful redirect back.
-      window.open(url, '_blank');
       
-      // Poll for connection status or just simulate success for demo
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // Open popup
+      const width = 500;
+      const height = 600;
+      const left = window.screen.width / 2 - width / 2;
+      const top = window.screen.height / 2 - height / 2;
       
-      // Create user with proper MongoDB ObjectId
-      const newUser: User = {
-        id: tempUserId,
-        name: 'User',
-        email: 'user@gmail.com', // This should come from Google OAuth
-        gmailConnected: true,
-        goals: [],
-        preferences: { 
-          focusMode: false, 
-          workHours: { start: '09:00', end: '17:00' },
-          urgencyThreshold: 50,
-          vipSenders: [],
-          interests: [],
-          notificationPreferences: {
-            immediate: true,
-            batched: true,
-            batchInterval: 60
-          }
-        },
-        createdAt: new Date()
+      const popup = window.open(
+        url,
+        'Connect Gmail',
+        `width=${width},height=${height},left=${left},top=${top}`
+      );
+
+      // Listen for message from popup
+      const handleMessage = async (event: MessageEvent) => {
+        if (event.data?.type === 'AUTH_SUCCESS' && event.data.user) {
+          const userData = event.data.user;
+          
+          // Construct full user object (preserving client-side only defaults if needed)
+          const newUser: User = {
+            id: userData.id,
+            name: userData.name,
+            email: userData.email,
+            picture: userData.picture,
+            gmailConnected: true,
+            goals: [], // Will be loaded separately
+            preferences: {
+              focusMode: false,
+              workHours: userData.preferences?.workHours || { start: '09:00', end: '17:00' },
+              urgencyThreshold: 50,
+              vipSenders: [],
+              interests: [],
+              notificationPreferences: {
+                immediate: true,
+                batched: true,
+                batchInterval: 60
+              }
+            },
+            createdAt: new Date()
+          };
+          
+          setUser(newUser);
+          localStorage.setItem('attune_user', JSON.stringify(newUser));
+          setIsConnected(true);
+          setIsProcessing(false);
+          
+          window.removeEventListener('message', handleMessage);
+          if (popup) popup.close();
+        }
       };
       
-      setUser(newUser);
-      localStorage.setItem('attune_user', JSON.stringify(newUser));
-      setIsConnected(true);
-      setIsProcessing(false);
+      window.addEventListener('message', handleMessage);
+
     } catch (error) {
       console.error('Failed to connect:', error);
       setIsProcessing(false);
     }
-  }, [tempUserId]);
+  }, []);
 
   // Disconnect Gmail
   const disconnectGmail = useCallback(() => {
@@ -209,57 +229,9 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  // Add goal
-  const addGoal = useCallback(async (goalData: Omit<Goal, 'id' | 'createdAt'>) => {
-    try {
-      const newGoal = await goalService.addGoal({ ...goalData, userId: user.id });
-      
-      // Refresh goals from backend to ensure sync
-      const updatedGoals = await goalService.getGoals(user.id);
-      setUser(prev => ({
-        ...prev,
-        goals: updatedGoals,
-      }));
-      
-      // Update context based on new goal
-      updateGoalContext(updatedGoals);
-    } catch (error) {
-      console.error('Failed to add goal:', error);
-      throw error;
-    }
-  }, [user.id]);
-
-  // Remove goal
-  const removeGoal = useCallback((goalId: string) => {
-    // Implement delete API call if needed
-    setUser(prev => ({
-      ...prev,
-      goals: prev.goals.filter(g => g.id !== goalId),
-    }));
-  }, []);
-
-  // Toggle focus mode
-  const toggleFocusMode = useCallback(() => {
-    setFocusMode(prev => !prev);
-  }, []);
-
-  // Update preferences
-  const updatePreferences = useCallback((preferences: Partial<User['preferences']>) => {
-    setUser(prev => ({
-      ...prev,
-      preferences: { ...prev.preferences, ...preferences },
-    }));
-  }, []);
-
-  // Add Priority Rule
-  const addPriorityRule = useCallback(async (rule: PriorityRule) => {
-    console.log('Adding priority rule:', rule);
-    // await api.post('/agent/priority-rules', { ...rule, userId: user.id });
-    // Trigger localized feedback logic if needed
-  }, [user.id]);
-
   // Update goal context (work hours, focus state, priorities)
   const updateGoalContext = useCallback((goals: Goal[]) => {
+    if (!user) return;
     // Extract priorities from goals
     const priorities = goals.map(g => ({
       goal: g.title,
@@ -274,19 +246,100 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
       workHours: user.preferences.workHours,
       focusMode: focusMode
     });
-  }, [user.preferences.workHours, focusMode]);
+  }, [user?.preferences.workHours, focusMode]);
+
+  // Add goal
+  const addGoal = useCallback(async (goalData: Omit<Goal, 'id' | 'createdAt'>) => {
+    if (!user) return;
+    try {
+      const newGoal = await goalService.addGoal({ ...goalData, userId: user.id });
+      
+      // Refresh goals from backend to ensure sync
+      const updatedGoals = await goalService.getGoals(user.id);
+      setUser(prev => prev ? ({
+        ...prev,
+        goals: updatedGoals,
+      }) : prev);
+      
+      // Update context based on new goal
+      updateGoalContext(updatedGoals);
+    } catch (error) {
+      console.error('Failed to add goal:', error);
+      throw error;
+    }
+  }, [user?.id, updateGoalContext]);
+
+  // Remove goal
+  const removeGoal = useCallback((goalId: string) => {
+    // Implement delete API call if needed
+    setUser(prev => prev ? ({
+      ...prev,
+      goals: prev.goals.filter(g => g.id !== goalId),
+    }) : prev);
+  }, []);
+
+  // Toggle focus mode
+  const toggleFocusMode = useCallback(() => {
+    setFocusMode(prev => !prev);
+  }, []);
+
+  // Update preferences
+  const updatePreferences = useCallback((preferences: Partial<User['preferences']>) => {
+    setUser(prev => prev ? ({
+      ...prev,
+      preferences: { ...prev.preferences, ...preferences },
+    }) : prev);
+  }, []);
+
+  // Add Priority Rule
+  const addPriorityRule = useCallback(async (rule: PriorityRule) => {
+    if (!user) return;
+    console.log('Adding priority rule:', rule);
+    
+    // Update local state immediately
+    setUser(prev => {
+      if (!prev) return prev;
+      const newPreferences = { ...prev.preferences };
+      
+      if (rule.type === 'sender') {
+        newPreferences.vipSenders = [...(newPreferences.vipSenders || []), rule.value];
+      } else {
+        newPreferences.interests = [...(newPreferences.interests || []), rule.value];
+      }
+      
+      return { ...prev, preferences: newPreferences };
+    });
+
+    // In a real app, we would make the API call here
+    // await api.post('/agent/priority-rules', { ...rule, userId: user.id });
+  }, [user?.id]);
+
+
 
   // Sub-agent decision logic
-  const decideSubAgent = useCallback((email: Email, context: { goals: Goal[], focusMode: boolean, workHours: any }) => {
+  const decideSubAgent = useCallback((email: Email, context: { goals: Goal[], focusMode: boolean, workHours: any, preferences?: any }) => {
     // Determine which sub-agent should handle this email
     const currentHour = new Date().getHours();
     const workStart = parseInt(context.workHours.start.split(':')[0]);
     const workEnd = parseInt(context.workHours.end.split(':')[0]);
     const isWorkHours = currentHour >= workStart && currentHour < workEnd;
     
+    // Check VIP Senders
+    if (context.preferences?.vipSenders?.some((sender: string) => email.sender.email.toLowerCase().includes(sender.toLowerCase()) || email.sender.name.toLowerCase().includes(sender.toLowerCase()))) {
+      return 'notify_immediately';
+    }
+
+    // Check Interests/Keywords
+    if (context.preferences?.interests?.some((interest: string) => 
+      email.subject.toLowerCase().includes(interest.toLowerCase()) || 
+      email.body?.toLowerCase().includes(interest.toLowerCase())
+    )) {
+      return 'notify_immediately';
+    }
+    
     // Decision logic
     if (context.focusMode && !isWorkHours) {
-      return 'delay'; // Delay notifications outside work hours in focus mode
+      return 'delay_notification'; // Delay notifications outside work hours in focus mode
     }
     
     // Check if email relates to any goals
@@ -296,11 +349,59 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
     );
     
     if (relatedGoals.length > 0) {
-      return 'immediate'; // Notify immediately if related to goals
+      return 'notify_immediately'; // Notify immediately if related to goals
     }
     
-    return 'batch'; // Default to batch processing
+    return 'batch_notification'; // Default to batch processing
   }, []);
+
+  // Update analysis when preferences/goals change
+  useEffect(() => {
+    if (!user || emails.length === 0) return;
+    
+    // Re-run decision logic for recent emails
+    const reAnalyze = async () => {
+      let changed = false;
+      const newMap = new Map(analyzedEmails);
+      
+      emails.forEach(email => {
+        const currentAnalysis = newMap.get(email.id);
+        if (!currentAnalysis) return;
+        
+        const newDecision = decideSubAgent(email, {
+          goals: user.goals,
+          focusMode,
+          workHours: user.preferences.workHours,
+          preferences: user.preferences
+        });
+        
+        if (newDecision !== currentAnalysis.decision) {
+          // If decision changed to notify_immediately due to rule, boost priority score
+          let newScore = currentAnalysis.priorityScore;
+          if (newDecision === 'notify_immediately' && currentAnalysis.decision !== 'notify_immediately') {
+             newScore = Math.max(newScore, 90);
+          }
+          
+          newMap.set(email.id, {
+            ...currentAnalysis,
+            decision: newDecision === 'notify_immediately' ? 'notify_immediately' : 
+                      newDecision === 'delay_notification' ? 'delay_notification' : 
+                      'batch_notification', // Map back to AgentDecision type
+            priorityScore: newScore,
+            reasoning: newDecision === 'notify_immediately' ? 'Matched priority rule or goal' : currentAnalysis.reasoning
+          });
+          changed = true;
+        }
+      });
+      
+      if (changed) {
+         setAnalyzedEmails(newMap);
+      }
+    };
+    
+    reAnalyze();
+    // Debounce this in real app, but for now specific dependencies
+  }, [user?.preferences.vipSenders, user?.preferences.interests, user?.goals, focusMode]);
 
   // Get analytics
   const getAnalytics = useCallback((): AnalyticsData => {
@@ -331,7 +432,7 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
     processEmail,
     processAllEmails,
     submitFeedback,
-    updateGoals: (goals) => setUser(prev => ({ ...prev, goals })),
+    updateGoals: (goals) => setUser(prev => prev ? ({ ...prev, goals }) : prev),
     addGoal,
     removeGoal,
     toggleFocusMode,

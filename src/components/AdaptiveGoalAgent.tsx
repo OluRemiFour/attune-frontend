@@ -121,7 +121,13 @@ function AdaptiveGoalAgentContent() {
     <LandingPage
       onConnectGmail={handleConnectGmail}
       onSetGoals={handleSetGoals}
-      onDashboard={() => setCurrentPage('dashboard')}
+      onDashboard={() => {
+        if (isConnected && user) {
+          setCurrentPage('dashboard');
+        } else {
+          handleConnectGmail();
+        }
+      }}
       isConnected={isConnected}
     />
   );

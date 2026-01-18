@@ -2,8 +2,9 @@
 
 export interface User {
   id: string;
-  email: string;
   name: string;
+  email: string;
+  picture?: string;
   gmailConnected: boolean;
   preferences: UserPreferences;
   goals: Goal[];

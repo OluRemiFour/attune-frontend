@@ -8,10 +8,11 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 
 interface AgentStatusBarProps {
   userName: string;
+  userPicture?: string;
   focusMode: boolean;
   isConnected: boolean;
   onToggleFocusMode: () => void;
@@ -21,6 +22,7 @@ interface AgentStatusBarProps {
 
 export function AgentStatusBar({
   userName,
+  userPicture,
   focusMode,
   isConnected,
   onToggleFocusMode,
@@ -75,6 +77,7 @@ export function AgentStatusBar({
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" className="flex items-center gap-2 px-2 hover:bg-white/5">
                 <Avatar className="h-8 w-8 ring-1 ring-white/10">
+                  <AvatarImage src={userPicture} />
                   <AvatarFallback className="bg-gradient-to-br from-purple-500/20 to-cyan-500/20 text-white text-xs font-bold">
                     {userName.split(' ').map(n => n[0]).join('').toUpperCase()}
                   </AvatarFallback>
