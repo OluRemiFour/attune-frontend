@@ -9,7 +9,7 @@ interface PriorityRule {
 
 interface AgentContextValue {
   // State
-  user: User;
+  user: User | null;
   emails: Email[];
   analyzedEmails: Map<string, EmailAnalysis>;
   isConnected: boolean;
@@ -38,35 +38,40 @@ interface AgentContextValue {
 const AgentContext = createContext<AgentContextValue | null>(null);
 
 export function AgentProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User>({
-    id: 'user_1',
-    name: 'User',
-    email: '',
-    gmailConnected: false,
-    goals: [],
-    preferences: { 
-      focusMode: false, 
-      workHours: { start: '09:00', end: '17:00' },
-      urgencyThreshold: 50,
-      vipSenders: [],
-      interests: [],
-      notificationPreferences: {
-        immediate: true,
-        batched: true,
-        batchInterval: 60
-      }
-    },
-    createdAt: new Date()
-  });
+  // Generate a temporary MongoDB-compatible ObjectId for development
+  const generateObjectId = () => {
+    const timestamp = Math.floor(new Date().getTime() / 1000).toString(16);
+    const randomValue = Math.random().toString(16).substring(2, 18);
+    return timestamp + randomValue.padEnd(16, '0');
+  };
+
+  const [user, setUser] = useState<User | null>(null);
+  const [tempUserId] = useState(generateObjectId());
   const [emails, setEmails] = useState<Email[]>([]);
   const [analyzedEmails, setAnalyzedEmails] = useState<Map<string, EmailAnalysis>>(new Map());
   const [isConnected, setIsConnected] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [focusMode, setFocusMode] = useState(false);
 
+  // Initialize user on mount
+  useEffect(() => {
+    // Check for existing user in localStorage
+    const storedUser = localStorage.getItem('attune_user');
+    if (storedUser) {
+      try {
+        const parsedUser = JSON.parse(storedUser);
+        setUser(parsedUser);
+        setIsConnected(parsedUser.gmailConnected);
+      } catch (error) {
+        console.error('Failed to parse stored user:', error);
+      }
+    }
+  }, []);
+
   // Load initial data
   useEffect(() => {
     const loadData = async () => {
+      if (!user) return;
       try {
         const goals = await goalService.getGoals(user.id);
         setUser(prev => ({ ...prev, goals }));
@@ -93,19 +98,46 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
       
       // Poll for connection status or just simulate success for demo
       await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      // Create user with proper MongoDB ObjectId
+      const newUser: User = {
+        id: tempUserId,
+        name: 'User',
+        email: 'user@gmail.com', // This should come from Google OAuth
+        gmailConnected: true,
+        goals: [],
+        preferences: { 
+          focusMode: false, 
+          workHours: { start: '09:00', end: '17:00' },
+          urgencyThreshold: 50,
+          vipSenders: [],
+          interests: [],
+          notificationPreferences: {
+            immediate: true,
+            batched: true,
+            batchInterval: 60
+          }
+        },
+        createdAt: new Date()
+      };
+      
+      setUser(newUser);
+      localStorage.setItem('attune_user', JSON.stringify(newUser));
       setIsConnected(true);
       setIsProcessing(false);
     } catch (error) {
       console.error('Failed to connect:', error);
       setIsProcessing(false);
     }
-  }, []);
+  }, [tempUserId]);
 
   // Disconnect Gmail
   const disconnectGmail = useCallback(() => {
     setIsConnected(false);
     setEmails([]);
     setAnalyzedEmails(new Map());
+    setUser(null);
+    localStorage.removeItem('attune_user');
   }, []);
 
   // Process single email (backend call)

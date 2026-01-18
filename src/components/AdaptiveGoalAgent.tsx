@@ -72,17 +72,26 @@ function AdaptiveGoalAgentContent() {
   }
 
   // Require Google OAuth before dashboard access
-  if (currentPage === 'dashboard' && !isConnected) {
+  if (currentPage === 'dashboard' && (!isConnected || !user)) {
     // Redirect to landing page if trying to access dashboard without authentication
-    setCurrentPage('landing');
     return (
       <LandingPage
         onConnectGmail={handleConnectGmail}
         onSetGoals={handleSetGoals}
-        onDashboard={() => setCurrentPage('dashboard')}
+        onDashboard={() => {
+          // Only allow dashboard if connected
+          if (isConnected && user) {
+            setCurrentPage('dashboard');
+          }
+        }}
         isConnected={isConnected}
       />
     );
+  }
+
+  // Don't render dashboard if no user
+  if (currentPage === 'dashboard' && !user) {
+    return null;
   }
 
   if (currentPage === 'dashboard') {
